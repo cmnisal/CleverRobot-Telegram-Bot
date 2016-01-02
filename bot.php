@@ -5,6 +5,7 @@ require 'chatter-bot-api/php/chatterbotapi.php';
 $factory = new ChatterBotFactory();
 
 $result = json_decode(file_get_contents("php://input"), true);
+
 processMessage($result);
 
 function processMessage($result){
@@ -12,20 +13,22 @@ function processMessage($result){
 
 	$messageElements = getMessageElements($result);
 
-	if ($messageElements['chatType'] != 'private'){
+	if ($messageElements['chatType'] !== 'private'){
 		return false;
 	}
 
-	if (file_exists('shutdown')){
-		sendMessage('*! The bot is currently shutting down for maintenance, try again later !* ', $messageElements['chatId']);
-		return false;
+	$chats = json_decode(file_get_contents('chats.json'), true);
+
+	if (!in_array($messageElements['chatId'], $chats)){
+		$chats[] = $messageElements['chatId'];
+		file_put_contents('chats.json', json_encode($chats));
 	}
 
 	$sessions = json_decode(file_get_contents("sessions.json"), true);
 
 	switch(strtolower($messageElements['text'])){
 		case '/start':
-			sendMessage("Welcome to CleverRobot! A Telegram bot powered by Cleverbot.\n\nSee two Cleverbots talking to eachother!\n@BotvsBot\n\nSend only one message at a time if you want to have a proper conversation!\n_Say something nice to Cleverbot!_", $messageElements['chatId']);
+			sendMessage("Welcome to CleverRobot! A bot powered by Cleverbot, made by @BasvdW.\n\nOfficial Cleverbot News:\nhttps://telegram.me/CleverbotNews\n*See two Cleverbots talking to each other!*\n@BotvsBot\n\nCleverbot supports multiple languages, altough you should use English for the best experience.\nSend only one message at a time if you want to have a proper conversation.\n_Say something nice to Cleverbot!_", $messageElements['chatId']);
 			break;
 		case '/restart':
 			if($messageElements['userId'] == '125874268'){
@@ -36,7 +39,7 @@ function processMessage($result){
 					exec('screen -X -S BotvsBot kill');
 					touch('restart');
 				} else {
-					sendMessage('Bot vs. Bot is not running. Starting it...', $messageElements['chatId']);
+					sendMessage('Bot vs. Bot is not running, starting it...', $messageElements['chatId']);
 					sendMessage('*! Starting Bot vs. Bot... !*');
 				}
 
@@ -115,13 +118,16 @@ function processMessage($result){
 
 					sendMessage('The bot has been shut down.', $messageElements['chatId']);
 				}
-
-				unlink('shutdown');
 				exit();
 			}
 			break;
 		default:
 			file_get_contents($website.'sendChatAction?chat_id='.$messageElements['chatId'].'&action=typing');
+
+			if (file_exists('shutdown')){
+				sendMessage("*! The bot has been shut down for maintenance, try again later !\nFollow *@CleverbotNews* for updates.*", $messageElements['chatId']);
+				return false;
+			}
 
 			$sessions = json_decode(file_get_contents('sessions.json'), true);
 
@@ -169,44 +175,42 @@ function getMessageElements($array){
 			'userName' => ''
 	);
 
-	if ($array != null){
-		if (isset($array['message']['chat']['id'])){
-			$messageElements['chatId'] = $array['message']['chat']['id'];
-		}
-
-		if (isset($array['message']['text'])){
-			$messageElements['text'] = str_replace('@ZermeloBot', '', $array['message']['text']);
-		}
-
-		if (isset($array['message']['message_id'])){
-			$messageElements['messageId'] = $array['message']['message_id'];
-		}
-
-		if (isset($array['message']['from']['id'])){
-			$messageElements['userId'] = $array['message']['from']['id'];
-		}
-
-		if (isset($array['message']['chat']['type'])){
-			$messageElements['chatType'] = $array['message']['chat']['type'];
-		}
-
-		if (isset($array['message']['from']['first_name'])){
-			$messageElements['firstName'] = $array['message']['from']['first_name'];
-		}
-
-		if (isset($array['message']['from']['last_name'])){
-			$messageElements['lastName'] = ' '.$array['message']['from']['last_name'];
-		}
-
-		if (isset($array['message']['from']['username'])){
-			$messageElements['userName'] = ', @'.$array['message']['from']['username'];
-		}
-
-		return $messageElements;
+	if (isset($array['message']['chat']['id'])){
+		$messageElements['chatId'] = $array['message']['chat']['id'];
 	}
+
+	if (isset($array['message']['text'])){
+		$messageElements['text'] = str_replace('@ZermeloBot', '', $array['message']['text']);
+	}
+
+	if (isset($array['message']['message_id'])){
+		$messageElements['messageId'] = $array['message']['message_id'];
+	}
+
+	if (isset($array['message']['from']['id'])){
+		$messageElements['userId'] = $array['message']['from']['id'];
+	}
+
+	if (isset($array['message']['chat']['type'])){
+		$messageElements['chatType'] = $array['message']['chat']['type'];
+	}
+
+	if (isset($array['message']['from']['first_name'])){
+		$messageElements['firstName'] = $array['message']['from']['first_name'];
+	}
+
+	if (isset($array['message']['from']['last_name'])){
+		$messageElements['lastName'] = ' '.$array['message']['from']['last_name'];
+	}
+
+	if (isset($array['message']['from']['username'])){
+		$messageElements['userName'] = ', @'.$array['message']['from']['username'];
+	}
+
+	return $messageElements;
 }
 
-function sendMessage($text, $chatId){
+function sendMessage($text, $chatId = null){
 	global $website;
 
 	$text = html_entity_decode($text);
