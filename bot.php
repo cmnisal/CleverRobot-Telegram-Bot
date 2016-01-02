@@ -45,6 +45,18 @@ function processMessage($result){
 				sendMessage('Bot vs. Bot has been (re)started', $messageElements['chatId']);
 			}
 			break;
+		case '/reset':
+			$session = array_search($messageElements['chatId'], $sessions);
+
+			if (!$session){
+				sendMessage('_You don\'t have an active session, say something nice to Cleverbot!_', $messageElements['chatId']);
+			} else {
+				unset($sessions[$session]);
+				file_put_contents('sessions.json', json_encode($sessions));
+				unlink('sessions/'.$session.'.json');
+				sendMessage('*! Your conversation with Cleverbot has been reset !*', $messageElements['chatId']);
+			}
+			break;
 		case '/resetall':
 			if ($messageElements['userId'] == '125874268'){
 				if (!$sessions){
