@@ -57,6 +57,7 @@ function checkIfEnglish($text){
 	if ($result && $result['data']['detections']['0']['language'] != 'en' && $result['data']['detections']['0']['isReliable'] === 1){
 		// 		print_r($result);
 		sendMessage('*! Language other than English detected, resetting conversation... !*');
+		touch('restart');
 		exit(2);
 	}
 }
