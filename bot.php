@@ -8,7 +8,7 @@ $result = json_decode(file_get_contents("php://input"), true);
 processMessage($result);
 
 function processMessage($result){
-	global $getUpdates, $factory;
+	global $website, $factory;
 
 	$messageElements = getMessageElements($result);
 
@@ -45,7 +45,7 @@ function processMessage($result){
 				sendMessage('Bot vs. Bot has been (re)started', $messageElements['chatId']);
 			}
 			break;
-		case '/reset':
+		case '/resetall':
 			if ($messageElements['userId'] == '125874268'){
 				if (!$sessions){
 					sendMessage('*! No running sessions !*', $messageElements['chatId']);
@@ -109,6 +109,8 @@ function processMessage($result){
 			}
 			break;
 		default:
+			file_get_contents($website.'sendChatAction?chat_id='.$messageElements['chatId'].'&action=typing');
+
 			$sessions = json_decode(file_get_contents('sessions.json'), true);
 
 			if (!$sessions){
