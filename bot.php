@@ -2,117 +2,206 @@
 require 'config.php';
 require 'chatter-bot-api/php/chatterbotapi.php';
 
-$getUpdates = $website."getUpdates";
-
 $factory = new ChatterBotFactory();
 
-$bot1 = $factory->create(ChatterBotType::CLEVERBOT);
-$bot1session = $bot1->createSession();
-
-$bot2 = $factory->create(ChatterBotType::CLEVERBOT);
-$bot2session = $bot2->createSession();
-
-$text = 'Hi.';
-
-while (true){
-	$result = file_get_contents($getUpdates);
-	
-	$result = json_decode($result, true);
-	$result = $result["result"];
-	
-	if (isset($result[0])){
-		foreach ($result as $message){
-			processMessage($result);
-			
-			$result = file_get_contents($getUpdates);
-			
-			$result = json_decode($result, true);
-			$result = $result["result"];
-		}
-	}
-	
-	sendMessage($text, 1);
-	checkIfEnglish($text);
-	$text = $bot2session->think($text);
-	sendMessage($text, 2);
-	checkIfEnglish($text);
-	$text = $bot1session->think($text);
-}
+$result = json_decode(file_get_contents("php://input"), true);
+processMessage($result);
 
 function processMessage($result){
-	global $getUpdates;
-	
+	global $getUpdates, $factory;
+
 	$messageElements = getMessageElements($result);
 
-	file_get_contents($getUpdates."?offset=".$messageElements["offset"]);
+	if ($messageElements['chatType'] != 'private'){
+		return false;
+	}
 
-	switch(strtolower($messageElements["text"])){
-		case "/restart":
-			if($messageElements['userId'] == "125874268"){
-				sendMessage("*! Resetting conversation... !*");
-				exit(2);
+	if (file_exists('shutdown')){
+		sendMessage('*! The bot is currently shutting down for maintenance, try again later !* ', $messageElements['chatId']);
+		return false;
+	}
+
+	$sessions = json_decode(file_get_contents("sessions.json"), true);
+
+	switch(strtolower($messageElements['text'])){
+		case '/start':
+			sendMessage("Welcome to CleverRobot! A Telegram bot powered by Cleverbot.\n\nSee two Cleverbots talking to eachother!\n@BotvsBot\n\nSend only one message at a time if you want to have a proper conversation!\n_Say something nice to Cleverbot!_", $messageElements['chatId']);
+			break;
+		case '/restart':
+			if($messageElements['userId'] == '125874268'){
+				if (isset($sessions[2])){
+					sendMessage('Restarting Bot vs. Bot...', $messageElements['chatId']);
+					sendMessage('*! Restarting Bot vs. Bot... !*');
+
+					exec('screen -X -S BotvsBot kill');
+					touch('restart');
+				} else {
+					sendMessage('Bot vs. Bot is not running. Starting it...', $messageElements['chatId']);
+					sendMessage('*! Starting Bot vs. Bot... !*');
+				}
+
+				exec('./screen.sh');
+
+				sendMessage('Bot vs. Bot has been (re)started', $messageElements['chatId']);
 			}
 			break;
-		case "/shutdown":
-			if ($messageElements['userId'] == "125874268"){
-				sendMessage("*! The bot has been shut down for maintenance. !*");
+		case '/reset':
+			if ($messageElements['userId'] == '125874268'){
+				if (!$sessions){
+					sendMessage('*! No running sessions !*', $messageElements['chatId']);
+				} else {
+					sendMessage('Resetting all conversations...', $messageElements['chatId']);
+
+					foreach ($sessions as $session){
+						sendMessage('*! Resetting all conversations... !*', $session);
+
+						$session = array_search($session, $sessions);
+
+						if ($session === 2){
+							exec('screen -X -S BotvsBot kill');
+							touch('restart');
+							exec('./screen.sh');
+						} else {
+							$sessions = json_decode(file_get_contents("sessions.json"), true);
+
+							unlink('sessions/'.$session.'.json');
+							unset($sessions[$session]);
+							file_put_contents('sessions.json', json_encode($sessions));
+						}
+
+						usleep(100000);
+					}
+
+					sendMessage('All conversations have been reset.', $messageElements['chatId']);
+				}
+			}
+			break;
+		case '/shutdown':
+			if ($messageElements['userId'] == '125874268'){
+				touch('shutdown');
+
+				if (!$sessions){
+					sendMessage('*! No running sessions !*', $messageElements['chatId']);
+				} else {
+					sendMessage('Shutting down bot...', $messageElements['chatId']);
+
+					foreach ($sessions as $session){
+						sendMessage('*! The bot is shutting down for maintenance, resetting all conversations... !*', $session);
+
+						if ($session = '@BotvsBot'){
+							exec('screen -X -S BotvsBot kill');
+						}
+
+						usleep(100000);
+					}
+
+					foreach (glob('sessions/*') as $file){
+						unlink($file);
+					}
+
+					file_put_contents('sessions.json', array());
+
+					sendMessage('The bot has been shut down.', $messageElements['chatId']);
+				}
+
+				unlink('shutdown');
 				exit();
 			}
+			break;
+		default:
+			$sessions = json_decode(file_get_contents('sessions.json'), true);
+
+			if (!$sessions){
+				$session = null;
+			} else {
+				$session = array_search($messageElements['chatId'], $sessions);
+			}
+
+			if (!$session){
+				if (!$sessions){
+					$session = 3;
+				} else{
+					$session = max(array_keys($sessions));
+					$session++;
+				}
+
+				${'bot'.$session} = $factory->create(ChatterBotType::CLEVERBOT);
+				${'bot'.$session.'session'} = ${'bot'.$session}->createSession();
+
+				file_put_contents('sessions/'.$session.'.json', serialize(${'bot'.$session.'session'}));
+
+				$sessions[$session] = $messageElements['chatId'];
+
+				file_put_contents('sessions.json', json_encode($sessions));
+			} else {
+				${'bot'.$session.'session'} = unserialize(file_get_contents('sessions/'.$session.'.json'));
+			}
+
+			$response = ${'bot'.$session.'session'}->think($messageElements['text']);
+			sendMessage($response, $messageElements['chatId']);
 			break;
 	}
 }
 
 function getMessageElements($array){
 	$messageElements = array(
-			"offset" => "",
-			"text" => "",
-			"userId" => ""
+			'chatId' => '',
+			'text' => '',
+			'messageId' => '',
+			'userId' => '',
+			'chatType' => '',
+			'firstName' => '',
+			'lastName' => '',
+			'userName' => ''
 	);
 
 	if ($array != null){
-		$keys = array_keys($array);
-		$key = array_shift($keys);
-		if (isset($array[$key]["update_id"])){
-			$messageElements["offset"] = $array[$key]["update_id"];
-			$messageElements["offset"]++;
+		if (isset($array['message']['chat']['id'])){
+			$messageElements['chatId'] = $array['message']['chat']['id'];
 		}
 
-		if (isset($array[$key]["message"]["text"])){
-			$messageElements["text"] = str_replace("@ZermeloBot", "", $array[$key]["message"]["text"]);
+		if (isset($array['message']['text'])){
+			$messageElements['text'] = str_replace('@ZermeloBot', '', $array['message']['text']);
 		}
 
-		if (isset($array[$key]["message"]["from"]["id"])){
-			$messageElements["userId"] = $array[$key]["message"]["from"]["id"];
+		if (isset($array['message']['message_id'])){
+			$messageElements['messageId'] = $array['message']['message_id'];
+		}
+
+		if (isset($array['message']['from']['id'])){
+			$messageElements['userId'] = $array['message']['from']['id'];
+		}
+
+		if (isset($array['message']['chat']['type'])){
+			$messageElements['chatType'] = $array['message']['chat']['type'];
+		}
+
+		if (isset($array['message']['from']['first_name'])){
+			$messageElements['firstName'] = $array['message']['from']['first_name'];
+		}
+
+		if (isset($array['message']['from']['last_name'])){
+			$messageElements['lastName'] = ' '.$array['message']['from']['last_name'];
+		}
+
+		if (isset($array['message']['from']['username'])){
+			$messageElements['userName'] = ', @'.$array['message']['from']['username'];
 		}
 
 		return $messageElements;
 	}
 }
 
-function sendMessage($text, $bot = null){
+function sendMessage($text, $chatId){
 	global $website;
 
-	if ($bot === 1){
-		file_get_contents($website.'sendMessage?chat_id=@BotvsBot&text='.urlencode('_Bot 1_: '.$text).'&parse_mode=Markdown');
-		echo "Bot 1: ".$text."\n";
-	} elseif ($bot === 2){
-		file_get_contents($website.'sendMessage?chat_id=@BotvsBot&text='.urlencode('_Bot 2_: '.$text).'&parse_mode=Markdown');
-		echo "Bot 2: ".$text."\n";
-	} else {
-		file_get_contents($website.'sendMessage?chat_id=@BotvsBot&text='.urlencode($text).'&parse_mode=Markdown');
-		echo $text."\n";
-	}
-}
+	$text = html_entity_decode($text);
 
-function checkIfEnglish($text){
-	$result = file_get_contents('http://ws.detectlanguage.com/0.2/detect?q='.urlencode($text).'&key=54fe0674c4102e18522daba929bff621');
-	$result = str_replace('true', '1', $result);
-	$result = str_replace('false', '0', $result);
-	$result = json_decode($result, true);
-	
-	if ($result && $result['data']['detections']['0']['language'] != 'en' && $result['data']['detections']['0']['isReliable'] === 1){
-// 		print_r($result);
-		sendMessage('*! Language other than English detected, resetting conversation... !*');
-		exit(2);
+	if (!$chatId){
+		file_get_contents($website.'sendMessage?chat_id=@BotvsBot&text='.urlencode($text).'&parse_mode=Markdown');
+		$text = str_replace('_', '', $text);
+		$text = str_replace('*', '', $text);
+	} else {
+		file_get_contents($website.'sendMessage?chat_id='.$chatId.'&text='.urlencode($text).'&parse_mode=Markdown');
 	}
 }

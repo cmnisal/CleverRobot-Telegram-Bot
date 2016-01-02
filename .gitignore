@@ -2,4 +2,7 @@
 .buildpath
 .project
 
+/sessions
+
 config.php
+sessions.json

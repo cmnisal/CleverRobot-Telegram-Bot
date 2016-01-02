@@ -1,2 +1,2 @@
 #!/bin/sh
-screen -dmS Cleverbot sh -c "./start.sh"
+screen -dmS BotvsBot sh -c "./start.sh"
