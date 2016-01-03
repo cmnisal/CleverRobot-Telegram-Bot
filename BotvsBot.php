@@ -43,7 +43,7 @@ function sendMessage($text){
 
 function checkIfEnglish($text){
 	if (!$text){
-		sendMessage('*! Empty Cleverbot message received, resetting all conversations !*');
+		sendMessage('*! Empty Cleverbot message received, resetting conversation !*');
 		exit(2);
 	}
 
