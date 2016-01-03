@@ -49,13 +49,13 @@ function checkIfEnglish($text){
 
 	$text = html_entity_decode($text);
 
-	$result = file_get_contents('http://ws.detectlanguage.com/0.2/detect?q='.urlencode($text).'&key=54fe0674c4102e18522daba929bff621');
+	$result = file_get_contents('http://ws.detectlanguage.com/0.2/detect?q='.urlencode($text).'&key='.$key);
 	$result = str_replace('true', '1', $result);
 	$result = str_replace('false', '0', $result);
 	$result = json_decode($result, true);
 
 	if ($result && $result['data']['detections']['0']['language'] != 'en' && $result['data']['detections']['0']['isReliable'] === 1){
-		// 		print_r($result);
+// 		print_r($result);
 		sendMessage('*! Language other than English detected, resetting conversation... !*');
 		touch('restart');
 		exit(2);

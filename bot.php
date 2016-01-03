@@ -91,7 +91,7 @@ function processMessage($result){
 						usleep(100000);
 					}
 
-					sendMessage('All conversations have been reset.', $messageElements['chatId']);
+					sendMessage('All sessions have been reset.', $messageElements['chatId']);
 				}
 			}
 			break;
