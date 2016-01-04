@@ -42,6 +42,8 @@ function sendMessage($text){
 }
 
 function checkIfEnglish($text){
+	global $key;
+
 	if (!$text){
 		sendMessage('*! Empty Cleverbot message received, resetting conversation !*');
 		exit(2);
