@@ -2,21 +2,10 @@
 require 'config.php';
 require 'chatter-bot-api/php/chatterbotapi.php';
 
-$getUpdates = $website.'getUpdates';
-
 $factory = new ChatterBotFactory();
 
-$bot1 = $factory->create(ChatterBotType::CLEVERBOT);
-$bot1session = $bot1->createSession();
-
-$bot2 = $factory->create(ChatterBotType::CLEVERBOT);
-$bot2session = $bot2->createSession();
-
-if (!file_exists('restart')){
-	file_put_contents('sessions.json', json_encode(array('2' => '@BotvsBot')));
-} else {
-	unlink('restart');
-}
+$bot1session = createSessions($factory);
+$bot2session = createSessions($factory);
 
 $text = 'Hi.';
 
@@ -28,6 +17,25 @@ while (true){
 	sendMessage('_Bot 2_: '.$text);
 	checkIfEnglish($text);
 	$text = $bot1session->think($text);
+}
+
+function createSessions($factory){
+	$sessions = json_decode(file_get_contents("sessions.json"), true);
+
+	if (!$sessions){
+		$session = 1;
+	} else {
+		$session = max(array_keys($sessions));
+		$session++;
+	}
+
+	${'bot'.$session} = $factory->create(ChatterBotType::CLEVERBOT);
+	${'bot'.$session.'session'} = ${'bot'.$session}->createSession();
+
+	$sessions[$session] = '@BotvsBot';
+	file_put_contents('sessions.json', json_encode($sessions));
+
+	return ${'bot'.$session.'session'};
 }
 
 function sendMessage($text){
@@ -57,7 +65,6 @@ function checkIfEnglish($text){
 	$result = json_decode($result, true);
 
 	if ($result && $result['data']['detections']['0']['language'] != 'en' && $result['data']['detections']['0']['isReliable'] === 1){
-// 		print_r($result);
 		sendMessage('*! Language other than English detected, resetting conversation... !*');
 		touch('restart');
 		exit(2);

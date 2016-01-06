@@ -37,7 +37,6 @@ function processMessage($result){
 					sendMessage('*! Restarting Bot vs. Bot... !*');
 
 					exec('screen -X -S BotvsBot kill');
-					touch('restart');
 				} else {
 					sendMessage('Bot vs. Bot is not running, starting it...', $messageElements['chatId']);
 					sendMessage('*! Starting Bot vs. Bot... !*');
@@ -49,17 +48,31 @@ function processMessage($result){
 			}
 			break;
 		case '/reset':
-			$session = array_search($messageElements['chatId'], $sessions);
+			$session = @array_search($messageElements['chatId'], $sessions);
 
 			if (!$session){
 				sendMessage('_You don\'t have an active session, say something nice to Cleverbot!_', $messageElements['chatId']);
 			} else {
 				sendMessage("*! Your conversation with Cleverbot has been reset !\nStarting new session...*", $messageElements['chatId']);
 
+				unlink('sessions/'.$session.'.json');
+				unset($sessions[$session]);
+
+				file_put_contents('sessions.json', json_encode($sessions));
+				$sessions = json_decode(file_get_contents('sessions.json'), true);
+
+				if ($sessions){
+					$session = max(array_keys($sessions));
+				}
+
+				$session++;
+
 				${'bot'.$session} = $factory->create(ChatterBotType::CLEVERBOT);
 				${'bot'.$session.'session'} = ${'bot'.$session}->createSession();
-
 				file_put_contents('sessions/'.$session.'.json', serialize(${'bot'.$session.'session'}));
+
+				$sessions[$session] = $messageElements['chatId'];
+				file_put_contents('sessions.json', json_encode($sessions));
 
 				sendMessage("*! New session started !*\n_Say something nice to Cleverbot!_", $messageElements['chatId']);
 			}
@@ -71,15 +84,18 @@ function processMessage($result){
 				} else {
 					sendMessage('Resetting all conversations...', $messageElements['chatId']);
 
+					$x = 0;
+
 					foreach ($sessions as $session){
 						sendMessage('*! Resetting all conversations... !*', $session);
 
 						$session = array_search($session, $sessions);
 
-						if ($session === 2){
+						if ($session === 2 && $x === 0){
 							exec('screen -X -S BotvsBot kill');
-							touch('restart');
 							exec('./screen.sh');
+
+							$x = 1;
 						} else {
 							$sessions = json_decode(file_get_contents("sessions.json"), true);
 
@@ -104,12 +120,21 @@ function processMessage($result){
 				} else {
 					sendMessage('Shutting down bot...', $messageElements['chatId']);
 
-					foreach ($sessions as $session){
-						sendMessage("*! The bot is shutting down for maintenance !\nFollow *@CleverbotNews* for updates.*", $session);
+					$x = 0;
 
-						if ($session = '@BotvsBot'){
-							exec('screen -X -S BotvsBot kill');
+					foreach ($sessions as $session){
+						if ($session === '@BotvsBot'){
+							if ($x === 0){
+								exec('screen -X -S BotvsBot kill');
+								sendMessage("*! The bot is shutting down for maintenance !\nFollow *@CleverbotNews* for updates.*", $session);
+
+								$x = 1;
+							}
+
+							continue;
 						}
+
+						sendMessage("*! The bot is shutting down for maintenance !\nFollow *@CleverbotNews* for updates.*", $session);
 
 						usleep(100000);
 					}
@@ -128,55 +153,62 @@ function processMessage($result){
 		default:
 			file_get_contents($website.'sendChatAction?chat_id='.$messageElements['chatId'].'&action=typing');
 
-			if (file_exists('shutdown')){
-				sendMessage("*! The bot has been shut down for maintenance, try again later !\nFollow *@CleverbotNews* for updates.*", $messageElements['chatId']);
-				return false;
+					if (file_exists('shutdown' || $messageElements['userId'] !== '125874268')){
+						sendMessage("*! The bot has been shut down for maintenance, try again later !\nFollow *@CleverbotNews* for updates.*", $messageElements['chatId']);
+						return false;
+					}
+
+					$session = @array_search($messageElements['chatId'], $sessions);
+
+					if (!$session){
+						if (!$sessions){
+							$session = 1;
+						} else{
+							$session = max(array_keys($sessions));
+							$session++;
+						}
+
+						${'bot'.$session} = $factory->create(ChatterBotType::CLEVERBOT);
+						${'bot'.$session.'session'} = ${'bot'.$session}->createSession();
+						file_put_contents('sessions/'.$session.'.json', serialize(${'bot'.$session.'session'}));
+
+						$sessions[$session] = $messageElements['chatId'];
+						file_put_contents('sessions.json', json_encode($sessions));
+					} else {
+						${'bot'.$session.'session'} = unserialize(file_get_contents('sessions/'.$session.'.json'));
+					}
+
+					$response = ${'bot'.$session.'session'}->think($messageElements['text']);
+
+					if (!$response){
+						sendMessage("*! Your conversation with Cleverbot has been reset, because of an expired session !\nStarting new session...*", $messageElements['chatId']);
+
+						unset($sessions[$session]);
+
+						$sessions = json_decode(file_get_contents('sessions.json'), true);
+
+						if (!$sessions){
+							$session = 1;
+						} else{
+							$session = max(array_keys($sessions));
+							$session++;
+						}
+
+						${'bot'.$session} = $factory->create(ChatterBotType::CLEVERBOT);
+						${'bot'.$session.'session'} = ${'bot'.$session}->createSession();
+						file_put_contents('sessions/'.$session.'.json', serialize(${'bot'.$session.'session'}));
+
+						$sessions[$session] = $messageElements['chatId'];
+						file_put_contents('sessions.json', json_encode($sessions));
+
+						sendMessage("*! New session started !*\n_Say something nice to Cleverbot!_", $messageElements['chatId']);
+					} else {
+						sendMessage($response, $messageElements['chatId']);
+					}
+					break;
 			}
-
-			$sessions = json_decode(file_get_contents('sessions.json'), true);
-
-			if (!$sessions){
-				$session = null;
-			} else {
-				$session = array_search($messageElements['chatId'], $sessions);
-			}
-
-			if (!$session){
-				if (!$sessions){
-					$session = 3;
-				} else{
-					$session = max(array_keys($sessions));
-					$session++;
-				}
-
-				${'bot'.$session} = $factory->create(ChatterBotType::CLEVERBOT);
-				${'bot'.$session.'session'} = ${'bot'.$session}->createSession();
-
-				file_put_contents('sessions/'.$session.'.json', serialize(${'bot'.$session.'session'}));
-
-				$sessions[$session] = $messageElements['chatId'];
-
-				file_put_contents('sessions.json', json_encode($sessions));
-			} else {
-				${'bot'.$session.'session'} = unserialize(file_get_contents('sessions/'.$session.'.json'));
-			}
-
-			$response = ${'bot'.$session.'session'}->think($messageElements['text']);
-
-			if (!$response){
-				sendMessage("*! Your conversation with Cleverbot has been reset, because of an expired session !\nStarting new session...*", $messageElements['chatId']);
-
-				${'bot'.$session} = $factory->create(ChatterBotType::CLEVERBOT);
-				${'bot'.$session.'session'} = ${'bot'.$session}->createSession();
-
-				file_put_contents('sessions/'.$session.'.json', serialize(${'bot'.$session.'session'}));
-
-				sendMessage("*! New session started !*\n_Say something nice to Cleverbot!_", $messageElements['chatId']);
-			} else {
-				sendMessage($response, $messageElements['chatId']);
-			}
-			break;
 	}
+	$lastMessage[$messageElements["userId"]][$messageElements["chatId"]] = $messageElements["text"];
 }
 
 function getMessageElements($array){
